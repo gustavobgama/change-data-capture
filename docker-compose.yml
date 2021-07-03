@@ -1,0 +1,72 @@
+version: '3.8'
+
+services:
+  zookeeper:
+    image: confluentinc/cp-zookeeper:6.0.0
+    ports:
+      - 2181:2181
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181  
+    volumes:
+      - zookeeper:/data
+      - zookeeper:/datalog
+    networks:
+      - cdc
+  
+  kafka:
+    image: confluentinc/cp-kafka:6.0.0
+    ports:
+      - 9092:9092
+      - 9093:9093
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_LISTENERS: INTERNAL://kafka:9092,EXTERNAL://kafka:9093
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:9092,EXTERNAL://localhost:9093
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    depends_on:
+      - zookeeper
+    volumes:
+      - kafka:/var/lib/kafka/data
+    networks:
+      - cdc
+
+  kafka-connect:
+    image: debezium/connect:1.5
+    ports:
+      - 8083:8083
+    links:
+      - zookeeper
+      - kafka
+      - mysql
+    environment:
+      BOOTSTRAP_SERVERS: kafka:9092
+      GROUP_ID: 1
+      CONFIG_STORAGE_TOPIC: my_connect_configs
+      OFFSET_STORAGE_TOPIC: my_connect_offsets
+      STATUS_STORAGE_TOPIC: my_connect_statuses
+    networks:
+      - cdc
+
+  mysql:
+    image: mysql:5.7
+    command: --server-id=223344 --log_bin=mysql-bin --binlog_format=row
+    ports:
+      - 3306:3306
+    environment:
+      MYSQL_ROOT_PASSWORD: debezium
+    volumes:
+      - mysql:/var/lib/mysql
+      - ./database:/docker-entrypoint-initdb.d
+    networks:
+      - cdc
+
+volumes:
+  zookeeper:
+  kafka:
+  mysql:
+
+networks:
+  cdc:
